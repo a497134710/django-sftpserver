@@ -46,6 +46,10 @@ class StubServer(paramiko.ServerInterface):
                 return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
 
+    def check_channel_request(self, kind, chanid):
+        print('kind={} => channelid={} channel_request success!!'.format(kind, chanid))
+        return paramiko.OPEN_SUCCEEDED
+
     def get_allowed_auths(self, username):
         return "publickey"
 
