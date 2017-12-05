@@ -19,5 +19,5 @@ from django.contrib import admin
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
-    url(r'', include('django_sftpserver.urls', namespace='django_sftpserver')),
+    url(r'', include(('django_sftpserver.urls', 'django_sftpserver'), namespace='django_sftpserver')),
 ]

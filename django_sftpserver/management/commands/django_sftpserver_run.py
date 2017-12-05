@@ -40,7 +40,7 @@ class Command(BaseCommand):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         server_socket.bind((options['host'], options['port']))
-        server_socket.listen(options['BACKLOG'])
+        server_socket.listen(10)
 
         transport_list = []
         try:
@@ -48,7 +48,6 @@ class Command(BaseCommand):
                 conn, addr = server_socket.accept()
                 host_key = paramiko.RSAKey.from_private_key_file(options['keyfile'])
                 transport = paramiko.Transport(conn)
-                print(transport.server_key_dict, host_key.get_name())
                 transport.add_server_key(host_key)
                 transport.set_subsystem_handler(
                     'sftp', paramiko.SFTPServer, sftpserver.StubSFTPServer)
@@ -56,6 +55,11 @@ class Command(BaseCommand):
                 server = sftpserver.StubServer()
                 transport.start_server(server=server)
                 channel = transport.accept()
+
+                print("OK!", transport, channel)
+                while transport.is_active():
+                    print("sleeping...")
+                    time.sleep(1)
 
                 transport_list.append((transport, channel))
         except KeyboardInterrupt:

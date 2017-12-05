@@ -100,14 +100,18 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         self.server = server
         self.user = self.server.user
         self.root = self.server.root
+        print("initialized")
 
     def session_started(self):
+        print("started")
         pass
 
     def session_ended(self):
+        print("session ended")
         self.server = None
 
     def _resolve(self, path):
+        print("resolve", path)
         if self.root:
             return self.root, path
         else:
@@ -139,16 +143,20 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
                 attr = paramiko.SFTPAttributes.from_stat(fobj.stat)
                 attr.filename = fobj.filename
                 result.append(attr)
+        print('list', path, result)
         return result
 
     def stat(self, path):
+        print('stat', path)
         root, path = self._resolve(path)
         return paramiko.SFTPAttributes.from_stat(root.get(path).stat)
 
     def lstat(self, path):
+        print('lstat', path)
         return self.stat(path)
 
     def open(self, path, flags, attr):
+        print('open', path)
         root, path = self._resolve(path)
         if not root:
             return paramiko.SFTP_PERMISSION_DENIED
@@ -161,12 +169,14 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         return StubSFTPHandle(self, root, path, flags)
 
     def remove(self, path):
+        print("remove", path)
         root, path = self._resolve(path)
         if not root:
             return paramiko.SFTP_PERMISSION_DENIED
         root.remove(path)
 
     def rename(self, oldpath, newpath):
+        print("rnemae", oldpath, newpath)
         oldroot, oldpath = self._resolve(oldpath)
         newroot, newpath = self._resolve(newpath)
         if oldroot != newroot:
@@ -176,6 +186,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         return paramiko.SFTP_OK
 
     def mkdir(self, path, attr):
+        print("mkdir", path)
         root, path = self._resolve(path)
         if not root:
             return paramiko.SFTP_PERMISSION_DENIED
@@ -183,6 +194,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         return paramiko.SFTP_OK
 
     def rmdir(self, path):
+        print("rmdir", path)
         root, path = self._resolve(path)
         if not root:
             return paramiko.SFTP_PERMISSION_DENIED
@@ -190,10 +202,16 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         return paramiko.SFTP_OK
 
     def chattr(self, path, attr):
-        return paramiko.SFTP_OP_UNSUPPORTED
+        print("chattr", path, attr)
+        return paramiko.SFTP_OK
+        # return paramiko.SFTP_OP_UNSUPPORTED
 
     def symlink(self, target_path, path):
-        return paramiko.SFTP_OP_UNSUPPORTED
+        print("symlink", target_path, path)
+        return paramiko.SFTP_OK
+        # return paramiko.SFTP_OP_UNSUPPORTED
 
     def readlink(self, path):
-        return paramiko.SFTP_OP_UNSUPPORTED
+        print("readlink", path)
+        return paramiko.SFTP_OK
+        # return paramiko.SFTP_OP_UNSUPPORTED

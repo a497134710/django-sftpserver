@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Django settings for example project.
 
@@ -10,10 +11,20 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/1.9/ref/settings/
 """
 
+import sys
 import os
+import time
+import datetime
+from django.contrib import messages
+from kombu import Exchange, Queue  # NOQA
+# from django.urls import reverse_lazy
+# from django.utils.translation import ugettext_lazy
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_DIR = os.path.dirname(__file__)
+PROJECT_NAME = os.path.basename(PROJECT_DIR)
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/1.9/howto/deployment/checklist/
@@ -22,12 +33,19 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECRET_KEY = "+mvxn1*fp!f$@m_0woy*h%&k%==)cu+&pzwg5jt8ro$+&jo5cw"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = eval(os.environ.get('DEBUG', 'True'))
+if sys.argv[1:2] == ['test']:  # テストの時はFalse
+    DEBUG = False
+    MODE = "test"
+else:
+    MODE = os.environ.get('MODE', 'prod')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = eval(os.environ.get('ALLOWED_HOSTS', "['*', ]"))
+SERVER_NAME = os.environ.get('SERVER_NAME', '')
 
+############################################
 # Application definition
-
+############################################
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -41,24 +59,28 @@ INSTALLED_APPS = [
     # if your app has other dependencies that need to be added to the site
     # they should be added here
 ]
+SESSION_COOKIE_NAME = '{}-sessionid'.format(PROJECT_NAME)
 
-MIDDLEWARE_CLASSES = [
+MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
+    # 'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+# if DEBUG:
+#     MIDDLEWARE.insert(1, 'debug_toolbar.middleware.DebugToolbarMiddleware')
 
-ROOT_URLCONF = 'example.urls'
+ROOT_URLCONF = '{}.urls'.format(PROJECT_NAME)
 
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates'), ],
+        'DIRS': [os.path.join(PROJECT_DIR, 'templates'),
+                 os.path.join(PROJECT_DIR, 'static', 'html')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -71,20 +93,109 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'example.wsgi.application'
-
-# Database
-# https://docs.djangoproject.com/en/1.9/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+############################################
+# log
+############################################
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': True,
+    'formatters': {
+        'simple': {
+            'format': '%(levelname)s %(message)s',
+            'datefmt': '%y %b %d, %H:%M:%S',
+        },
+        'verbose': {
+            'format': ('%(levelname)s %(asctime)s %(module)s '
+                       '%(process)d %(thread)d %(message)s'),
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple'
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': 'django.log',
+            'formatter': 'simple',
+            'maxBytes': 1024 * 1024 * 100,  # 100 mb
+        },
+        'mail_admins': {
+            'level': 'ERROR',
+            'class': 'django.utils.log.AdminEmailHandler',
+            'include_html': True,
+        },
+    },
+    'loggers': {
+        os.path.basename(PROJECT_NAME): {
+            'handlers': ['console', ],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django': {
+            'handlers': ['console', ],
+            'level': 'INFO',
+            'propagate': True,
+        },
     }
 }
 
+# LOGGING['root'] = {
+#     'level': 'INFO',
+#     'handlers': ['console', ],
+# }
+
+
+MESSAGE_TAGS = {
+    messages.ERROR: 'danger'
+}
+
+############################################
+# wsgi
+############################################
+WSGI_APPLICATION = '{}.wsgi.application'.format(PROJECT_NAME)
+
+
+############################################
+# Database
+# https://docs.djangoproject.com/en/1.9/ref/settings/#databases
+
+db_type = os.environ.get('DB_TYPE', 'sqlite')
+if db_type == 'sqlite':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
+    }
+    if MODE == 'test':
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.sqlite3',
+                "NAME": ":memory:",
+            }
+        }
+elif db_type == 'postgres':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'postgres'),
+            'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
+            'HOST': os.environ.get('DB_ADDR', 'db'),
+            'PORT': os.environ.get('DB_PORT', 5432),
+        }
+    }
+else:
+    raise Exception('unknown database type "{}"'.format(db_type))
+
+
+############################################
 # Password validation
-# https://docs.djangoproject.com/en/1.9/ref/settings/#auth-password-validators
+############################################
+# https://docs.djangoproject.com/en/1.10/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -92,6 +203,9 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -101,20 +215,411 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
+
+############################################
 # Internationalization
-# https://docs.djangoproject.com/en/1.9/topics/i18n/
+############################################
+# https://docs.djangoproject.com/en/1.10/topics/i18n/
+LANGUAGE_CODE = 'ja'
+TIME_ZONE = 'Asia/Tokyo'
+if sys.version_info[0] == 2:
+    class JST(datetime.tzinfo):
+        def utcoffset(self, dt):
+            return datetime.timedelta(hours=9)
 
-LANGUAGE_CODE = 'en-us'
+        def tzname(self, dt):
+            return "Asia/Tokyo"
 
-TIME_ZONE = 'UTC'
-
+        def dst(self, dt):
+            return datetime.timedelta(0)
+    TZ_INFO = JST()
+else:
+    TZ_INFO = datetime.timezone(datetime.timedelta(hours=9))
 USE_I18N = True
 
 USE_L10N = True
 
 USE_TZ = True
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.9/howto/static-files/
+############################################
+# admin
+############################################
+# mail_adminsで送られる宛先
+ADMINS = eval(os.environ.get(
+    'ADMINS',
+    "[('Shogo Sawai', '***@****.co.jp'), ]"))
 
+############################################
+# cache
+############################################
+cache_type = os.environ.get('CACHE_TYPE', 'filebased')
+
+# テストの時は基本的にはcacheをOFFにしておく
+if MODE == 'test':
+    cache_type = 'dummy'
+
+if cache_type == 'memcached':
+    CACHE_DEFAULT = dict(
+        BACKEND='django.core.cache.backends.memcached.MemcachedCache',
+        LOCATION='{}:{}'.format(
+            os.environ.get('MEMCACHED_HOST', '127.0.0.1'),
+            os.environ.get('MEMCACHED_PORT', '11211'),
+        ),
+    )
+elif cache_type == 'redis':
+    CACHE_DEFAULT = {
+        'BACKEND': 'redis_cache.RedisCache',
+        'LOCATION': [
+            '{}:{}'.format(os.environ.get('REDIS_CACHE_HOST', 'redis'),
+                           os.environ.get('REDIS_CACHE_PORT', 6379), ),
+        ],
+        'OPTIONS': {
+            'DB': os.environ.get('REDIS_CACHE_DB', 1),
+            'PARSER_CLASS': 'redis.connection.HiredisParser',
+            'CONNECTION_POOL_CLASS': 'redis.BlockingConnectionPool',
+            'CONNECTION_POOL_CLASS_KWARGS': {
+                'max_connections': 50,
+                'timeout': 20,
+            },
+            'MAX_CONNECTIONS': 1000,
+            'PICKLE_VERSION': -1,
+        },
+    }
+elif cache_type == 'filebased':
+    CACHE_DEFAULT = dict(
+        BACKEND='django.core.cache.backends.filebased.FileBasedCache',
+        LOCATION=os.environ.get('CACHE_FILEBASED_LOCATION', '/tmp/django_{}_cache/'.format(PROJECT_NAME)),
+        OPTIONS={
+            'MAX_ENTRIES': 32768,
+        }
+    )
+elif cache_type == 'localmem':
+    CACHE_DEFAULT = dict(
+        BACKEND='django.core.cache.backends.locmem.LocMemCache',
+        LOCATION='unique-{}-key'.format(PROJECT_NAME),
+    )
+elif cache_type == 'dummy':
+    CACHE_DEFAULT = dict(
+        BACKEND='django.core.cache.backends.dummy.DummyCache',
+    )
+else:
+    raise Exception("unknown cache type : {}".format(cache_type))
+CACHES = {
+    'default': CACHE_DEFAULT,
+}
+
+############################################
+# Static files (CSS, JavaScript, Images)
+############################################
+# https://docs.djangoproject.com/en/1.9/howto/static-files/
+STATIC_ROOT = os.environ.get(
+    'STATIC_ROOT', os.path.join(BASE_DIR, "static_root"))
 STATIC_URL = '/static/'
+STATICFILES_DIRS = (
+    os.path.join(BASE_DIR, PROJECT_DIR, "static"),
+)
+
+MEDIA_ROOT = os.environ.get(
+    'MEDIA_ROOT', os.path.join(BASE_DIR, 'media_root'))
+PRIVATE_MEDIA_ROOT = os.path.join(MEDIA_ROOT, 'private')
+MEDIA_URL = '/media/'
+
+storage_type = os.environ.get("STORAGE_TYPE", "filesystem")
+if 's3' in storage_type:
+    AWS_ACCESS_KEY_ID = os.environ['STORAGE_AWS_ACCESS_KEY_ID']
+    AWS_SECRET_ACCESS_KEY = os.environ['STORAGE_AWS_SECRET_ACCESS_KEY']
+    AWS_STORAGE_BUCKET_NAME = os.environ['STORAGE_AWS_BUCKET_NAME']
+    AWS_S3_REGION_NAME = os.environ.get('STORAGE_AWS_S3_REGION_NAME', None)
+    AWS_S3_HOST = os.environ.get('STORAGE_AWS_S3_HOST', 's3-ap-northeast-1.amazonaws.com')
+    AWS_LOCATION = os.environ.get('STORAGE_AWS_S3_LOCATION', PROJECT_NAME)
+    AWS_IS_GZIPPED = True
+    AWS_QUERYSTRING_AUTH = False
+    AWS_PRELOAD_METADATA = True
+    AWS_S3_FILE_OVERWRITE = False
+
+    expires = time.time() + 364 * 24 * 60 * 60  # 364 days from now
+
+    AWS_HEADERS = {
+        # 'Thu, 15 Apr 2110 20:00:00 GMT',
+        'Expires': time.strftime("%a, %d-%b-%Y %T GMT", time.gmtime(expires)),
+        'Cache-Control': 'public, max-age=7776000',  # 90 days
+    }
+
+if storage_type == 'filesystem':
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    PRIVATE_FILE_STORAGE = 'django_busybody.custom_storages.PrivateFileSystemStorage'
+elif storage_type == 's3':
+    STATICFILES_STORAGE = 'django_busybody.custom_storages.StaticS3Storage'
+    DEFAULT_FILE_STORAGE = 'django_busybody.custom_storages.MediaS3Storage'
+    PRIVATE_FILE_STORAGE = 'django_busybody.custom_storages.ApiOnlyMediaS3Storage'
+elif storage_type == 'hashed_s3':
+    STATICFILES_STORAGE = 'django_busybody.custom_storages.ManifestFilesStaticS3Storage'
+    DEFAULT_FILE_STORAGE = 'django_busybody.custom_storages.HashedMediaS3Storage'
+    PRIVATE_FILE_STORAGE = 'django_busybody.custom_storages.ApiOnlyHashedMediaS3Storage'
+elif storage_type == 'hashed_filesystem':
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage'
+    DEFAULT_FILE_STORAGE = 'django_busybody.custom_storages.HashedFileSystemStorage'
+    PRIVATE_FILE_STORAGE = 'django_busybody.custom_storages.PrivateHashedFileSystemStorage'
+
+############################################
+# Redis
+############################################
+REDIS_CELERY_PORT = os.environ.get('REDIS_CELERY_PORT', 6379)
+REDIS_CELERY_DB = os.environ.get('REDIS_CELERY_DB', 2)
+REDIS_CELERY_HOST = os.environ.get('REDIS_CELERY_HOST', 'redis')
+
+############################################
+# rabbit mq
+############################################
+RABBIT_HOSTNAME = os.environ.get('RABBIT_HOSTNAME', '127.0.0.1:5672')
+
+if RABBIT_HOSTNAME.startswith('tcp://'):
+    RABBIT_HOSTNAME = RABBIT_HOSTNAME.split('//')[1]
+
+BROKER_URL = os.environ.get('BROKER_URL', '')
+if not BROKER_URL:
+    BROKER_URL = 'amqp://{user}:{password}@{hostname}/{vhost}'.format(
+        user=os.environ.get('RABBIT_USER', PROJECT_NAME),
+        password=os.environ.get('RABBIT_PASS', PROJECT_NAME),
+        hostname=RABBIT_HOSTNAME,
+        vhost=os.environ.get('RABBIT_VHOST', PROJECT_NAME))
+
+# We don't want to have dead connections stored on rabbitmq, so we have to
+# negotiate using heartbeats
+# BROKER_HEARTBEAT = '?heartbeat=180'
+# if not BROKER_URL.endswith(BROKER_HEARTBEAT):
+#     BROKER_URL += BROKER_HEARTBEAT
+# BROKER_POOL_LIMIT = 1
+# BROKER_CONNECTION_TIMEOUT = 10
+
+############################################
+# Celery configuration
+############################################
+# Sensible settings for celery
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ALWAYS_EAGER = False
+CELERY_ACKS_LATE = True
+CELERY_TASK_PUBLISH_RETRY = True
+CELERY_DISABLE_RATE_LIMITS = False
+
+# By default we will ignore result
+# If you want to see results and try out tasks interactively, change it to False
+# Or change this setting on tasks level
+CELERY_RESULT_PERSISTENT = False
+CELERY_IGNORE_RESULT = False
+CELERY_TASK_RESULT_EXPIRES = 600
+
+# Set redis as celery result backend
+CELERY_RESULT_BACKEND = 'redis://{}:{}/{}'.format(
+    REDIS_CELERY_HOST, REDIS_CELERY_PORT, REDIS_CELERY_DB)
+CELERY_REDIS_MAX_CONNECTIONS = 128
+
+# Don't use pickle as serializer, json is much safer
+CELERY_TASK_SERIALIZER = "json"
+CELERY_ACCEPT_CONTENT = ['application/json']
+
+CELERYD_HIJACK_ROOT_LOGGER = False
+CELERYD_PREFETCH_MULTIPLIER = 1
+CELERYD_MAX_TASKS_PER_CHILD = 1000
+
+CELERY_DEFAULT_QUEUE = 'default'
+CELERY_DEFAULT_EXCHANGE_TYPE = 'topic'
+CELERY_DEFAULT_ROUTING_KEY = 'default'
+
+CELERY_QUEUES = (
+    Queue('default', Exchange('default'), routing_key='default'),
+    Queue('time_sensitive', Exchange('time_sensitive'), routing_key='time_sensitive_tasks'),
+    Queue('background', Exchange('background'), routing_key='background'),
+)
+
+CELERY_ROUTES = {
+    # 'proj.app.tasks.LongTask': {
+    #     'queue': 'long',
+    #     'routing_key': 'long_tasks',
+    # },
+
+    # 'proj.app2.tasks.another_long_task': {
+    #     'queue': 'long',
+    #     'routing_key': 'long_tasks'
+    # }
+}
+
+if MODE == 'test':
+    CELERY_ALWAYS_EAGER = True
+
+############################################
+# mail
+############################################
+SERVER_EMAIL = os.environ.get("SERVER_EMAIL", '{}.dev@sizebook.co.jp'.format(PROJECT_NAME))
+EMAIL_SUBJECT_PREFIX = "[{}]".format(PROJECT_NAME)
+email_type = os.environ.get("EMAIL_TYPE", "console")
+USE_AWS_SES = False
+DEFAULT_FROM_EMAIL = os.environ.get(
+    'DEFAULT_FROM_EMAIL', 'sizebook <dev@sizebook.co.jp>')
+if email_type == "smtp":
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get("EMAIL_HOST", '127.0.0.1')
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", '25'))
+    EMAIL_HOST_USER = os.environ.get('SASL_USER', None)
+    EMAIL_HOST_PASSWORD = os.environ.get('SASL_PASS', None)
+    EMAIL_USE_SSL = eval(os.environ.get('EMAIL_USE_SSL', 'False'))
+    EMAIL_USE_TLS = eval(os.environ.get('EMAIL_USE_TLS', 'False'))
+elif email_type == "debug-smtp":
+    # python -m smtpd -n -c DebuggingServer localhost:1025
+    EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    EMAIL_HOST = os.environ.get("EMAIL_HOST", '127.0.0.1')
+    EMAIL_PORT = int(os.environ.get("EMAIL_PORT", '1025'))
+elif email_type == 'aws-ses':
+    USE_AWS_SES = True
+    EMAIL_BACKEND = 'django_ses.SESBackend'
+    AWS_SES_ACCESS_KEY_ID = os.environ["AWS_SES_ACCESS_KEY"]
+    AWS_SES_SECRET_ACCESS_KEY = os.environ["AWS_SES_SECRET_KEY"]
+    AWS_SES_REGION_NAME = os.environ["AWS_SES_REGION_NAME"]
+    AWS_SES_REGION_ENDPOINT = os.environ["AWS_SES_REGION_ENDPOINT"]
+    BOUNCY_TOPIC_ARN = os.environ['BOUNCY_TOPIC_ARN']
+    BOUNCY_VERIFY_CERTIFICATE = False  # <=これがないとUnicodeErrorが発生する．。。
+elif email_type == "file":
+    EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
+    EMAIL_FILE_PATH = 'django.email.log'
+else:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+############################################
+# debug-toolbar
+############################################
+# if DEBUG:
+#     INSTALLED_APPS += [
+#         'debug_toolbar',
+#         'template_timings_panel'
+#     ]
+
+# DEBUG_TOOLBAR_CONFIG = {
+#     'SHOW_TEMPLATE_CONTEXT': True,
+#     "SHOW_TOOLBAR_CALLBACK": lambda request: True,
+# }
+
+# DEBUG_TOOLBAR_PANELS = [
+#     'debug_toolbar.panels.versions.VersionsPanel',
+#     'debug_toolbar.panels.timer.TimerPanel',
+#     'debug_toolbar.panels.settings.SettingsPanel',
+#     'debug_toolbar.panels.headers.HeadersPanel',
+#     'debug_toolbar.panels.request.RequestPanel',
+#     'debug_toolbar.panels.sql.SQLPanel',
+#     'debug_toolbar.panels.staticfiles.StaticFilesPanel',
+#     'debug_toolbar.panels.templates.TemplatesPanel',
+#     'debug_toolbar.panels.cache.CachePanel',
+#     'debug_toolbar.panels.signals.SignalsPanel',
+#     'debug_toolbar.panels.logging.LoggingPanel',
+#     'debug_toolbar.panels.redirects.RedirectsPanel',
+#     'template_timings_panel.panels.TemplateTimings.TemplateTimings',
+# ]
+
+############################################
+# dbbackup
+############################################
+
+# dbbackup_type = os.environ.get('DBBACKUP_TYPE', 'filesystem')
+# DBBACKUP_MEDIA_FILENAME_TEMPLATE = os.environ.get('DBBACKUP_MEDIA_FILENAME_TEMPLATE', (
+#     os.path.join('{}-backup'.format(PROJECT_NAME),
+#                  'media-{databasename}-{servername}-{datetime}.{extension}')))
+# if dbbackup_type:
+#     INSTALLED_APPS += [
+#         'dbbackup',  # django-dbbackup
+#     ]
+# if dbbackup_type == 'filesystem':
+#     DBBACKUP_STORAGE = 'django.core.files.storage.FileSystemStorage'
+#     DBBACKUP_STORAGE_OPTIONS = {'location': '/tmp/backup'}
+# elif dbbackup_type == 's3':
+#     DBBACKUP_STORAGE = 'storages.backends.s3boto.S3BotoStorage'
+#     DBBACKUP_STORAGE_OPTIONS = {
+#         'access_key': os.environ.get('DBBACKUP_AWS_ACCESS_KEY'),
+#         'secret_key': os.environ.get('DBBACKUP_AWS_SECRET_KEY'),
+#         'bucket_name': os.environ.get('DBBACKUP_AWS_BUCKET_NAME'),
+#     }
+# else:
+#     pass
+
+############################################
+# coverage test
+############################################
+# INSTALLED_APPS += ['django_nose', ]
+# # TEST_RUNNER = 'django_nose.NoseTestSuiteRunner'
+# NOSE_ARGS = [
+#     '--with-coverage',  # coverage を取る
+#     '--cover-html',  # coverage を html で cover/ に出力する
+#     '--cover-package={}'.format(PROJECT_NAME),  # coverage を取得する対象アプリは app1 と app2
+# ]
+
+############################################
+# raven
+############################################
+raven_dsn = os.environ.get("RAVEN_DSN", "")
+if raven_dsn:
+    INSTALLED_APPS += [
+        'raven.contrib.django.raven_compat',
+    ]
+
+    RAVEN_CONFIG = {
+        'dsn': raven_dsn,
+        # If you are using git, you can also automatically configure the
+        # release based on the git info.
+        'release': os.environ.get('RELEASE_ID', "Unknown release id"),
+    }
+
+    LOGGING['root'] = {
+        'level': 'WARNING',
+        'handlers': ['sentry', ],
+    }
+    LOGGING['handlers']['sentry'] = {
+        'level': 'ERROR',  # To capture more than ERROR, change to WARNING, INFO, etc.
+        'class': 'raven.contrib.django.raven_compat.handlers.SentryHandler',
+        'tags': {'custom-tag': 'x'},
+    }
+    LOGGING['loggers'].update({
+        'django.db.backends': {
+            'level': 'ERROR',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'raven': {
+            'level': 'INFO',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+        'sentry.errors': {
+            'level': 'INFO',
+            'handlers': ['console'],
+            'propagate': False,
+        },
+    })
+
+############################################
+# sorl thumbnail
+############################################
+if cache_type == 'redis':
+    THUMBNAIL_REDIS_HOST = os.environ.get('REDIS_CACHE_HOST', 'redis')
+    THUMBNAIL_REDIS_PORT = os.environ.get('REDIS_CACHE_PORT', 6379)
+    THUMBNAIL_REDIS_DB = 3
+    THUMBNAIL_KVSTORE = 'sorl.thumbnail.kvstores.redis_kvstore.KVStore'
+else:
+    THUMBNAIL_KVSTORE = 'sorl.thumbnail.kvstores.cached_db_kvstore.KVStore'
+
+THUMBNAIL_STORAGE = os.environ.get(
+    'THUMBNAIL_STORAGE', 'django.core.files.storage.FileSystemStorage')
+# THUMBNAIL_STORAGE = 'django_busybody.custom_storages.MediaS3Storage'
+TEMPLATE_DEBUG = True
+
+SORL_THUMBNAIL_DEBUG = eval(os.environ.get('SORL_THUMBNAIL_DEBUG', 'False'))
+if SORL_THUMBNAIL_DEBUG:
+    import logging
+    from sorl.thumbnail.log import ThumbnailLogHandler
+    handler = ThumbnailLogHandler()
+    handler.setLevel(logging.DEBUG)
+    logging.getLogger('sorl.thumbnail').addHandler(handler)
+
+
+############################################
+# current project
+############################################
+

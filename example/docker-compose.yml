@@ -1,0 +1,60 @@
+version: '2'
+
+volumes:
+  pg_data:
+  media_root:
+
+services:
+  # PostgreSQL database
+  db:
+    image: postgres:9.6.2
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=postgres
+      - PGDATA=/postgres/data
+    volumes:
+      - pg_data:/postgres/data
+
+  # Redis
+  redis:
+    image: redis:2.8.19
+
+  # Django web server
+  web_base:
+    build:
+      context: ..
+      dockerfile: example/Dockerfile
+    command: "true"
+    environment:
+      - DB_TYPE=postgres
+      - DB_ADDR=db
+      - DB_PORT=5432
+      - DEUBG=True
+      - CACHE_TYPE=redis
+    volumes:
+      - media_root:/data/media
+
+  web_app:
+    extends:
+      web_base
+    command: bash -c "sleep 5; python manage.py migrate; python manage.py runserver 0.0.0.0:8000"
+    expose:
+      - "8000"
+    volumes:
+      - ./example:/app/example
+    ports:
+      - "42044:8000"
+    depends_on:
+      - redis
+      - db
+
+  web_sftp:
+    extends:
+      web_base
+    command: bash -c "sleep 15; python manage.py django_sftpserver_run -k /etc/sftp_host_key"
+    ports:
+      - "42045:2222"
+    depends_on:
+      - redis
+      - db

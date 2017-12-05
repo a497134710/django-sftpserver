@@ -63,6 +63,9 @@ class TestDjango_sftpserver_sftpserver(TestCase):
         self.assertEqual(server.check_auth_publickey(name, self.valid_key),
                          paramiko.AUTH_FAILED)
 
+    def test_auth_root_with_branch(self):
+        pass
+
 
 class TestDjango_sftpserver_sftpserver_with_root(TestCase):
     def setUp(self):

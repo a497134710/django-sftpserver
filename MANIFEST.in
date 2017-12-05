@@ -2,5 +2,5 @@ include AUTHORS.rst
 include CONTRIBUTING.rst
 include HISTORY.rst
 include LICENSE
-include readme.md
+include README.rst
 recursive-include django_sftpserver *.html *.png *.gif *js *.css *jpg *jpeg *svg *py
