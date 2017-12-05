@@ -57,10 +57,22 @@ class Root(models.Model):
         fileobj = self.get(path)
         return MetaFile.objects.filter(parent=fileobj)
 
+    def exists(self, path):
+        return MetaFile.objects.filter(root=self, path=path).exists()
+
     def get(self, path):
         if path != '/' and path.endswith('/'):
             path = path[:-1]
         return MetaFile.objects.get(root=self, path=path)
+
+    def create(self, path):
+        dirname, basename = os.path.split(path)
+        parent = self.mkdir_if_not_exists(dirname)
+        fileobj = MetaFile.objects.create(
+            root=self, parent=parent, path=path, filename=basename)
+        fileobj.data = b''
+        fileobj.save()
+        return fileobj
 
     def put(self, path, content=b''):
         dirname, basename = os.path.split(path)
