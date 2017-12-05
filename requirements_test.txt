@@ -6,3 +6,6 @@ codecov>=2.0.0
 
 
 # Additional test requirements go here
+bsdiff4==1.1.4
+six==1.11.0
+future==0.16.0

@@ -6,5 +6,5 @@ from django.conf.urls import url, include
 from django_sftpserver.urls import urlpatterns as django_sftpserver_urls
 
 urlpatterns = [
-    url(r'^', include(django_sftpserver_urls, namespace='django_sftpserver')),
+    url(r'^', include((django_sftpserver_urls, 'django_sftpserver'), namespace='django_sftpserver')),
 ]

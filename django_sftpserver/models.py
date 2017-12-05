@@ -9,12 +9,19 @@ import hashlib
 import bsdiff4
 import re
 import stat as _stat
+import time as _time
 
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.db import models
 from future.utils import python_2_unicode_compatible
+
+
+def _timestamp(dt):
+    if hasattr(dt, 'timestamp'):
+        return dt.timestamp()
+    return _time.mktime(dt.timetuple())
 
 
 @python_2_unicode_compatible
@@ -111,7 +118,7 @@ class Root(models.Model):
         self.base_commit = c
         self.save()
 
-        h = hashlib.sha1('{}'.format(c.created_at.timestamp()).encode('UTF-8'))
+        h = hashlib.sha1('{}'.format(_timestamp(c.created_at)).encode('UTF-8'))
         for item in MetaFile.objects.all().order_by("path"):
             CommitItem.objects.create(commit=c, path=item.path, key=item.key)
             h.update(item.path.encode('UTF-8'))
