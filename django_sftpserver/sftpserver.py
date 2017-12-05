@@ -6,6 +6,7 @@ from __future__ import print_function
 import io
 import os
 import paramiko
+import stat as _stat
 
 from django.contrib.auth import get_user_model
 from . import models
@@ -23,9 +24,23 @@ class StubServer(paramiko.ServerInterface):
         self.user = get_user_model().objects.get(username=username)
         self.root_name = root
         self.branch_name = branch
+        if self.root_name:
+            self.root = models.Root.objects.get(
+                name=self.root_name, branch=self.branch_name)
+        else:
+            self.root = None
 
     def check_auth_publickey(self, username, key):
-        self.set_username(username)
+        try:
+            self.set_username(username)
+        except get_user_model().DoesNotExist:
+            return paramiko.AUTH_FAILED
+        except models.Root.DoesNotExist:
+            return paramiko.AUTH_FAILED
+
+        if self.root and (not self.root.has_permission(self.user)):
+            return paramiko.AUTH_FAILED
+
         for public_key in models.AuthorizedKey.objects.filter(user=self.user):
             if key.get_base64() == public_key.key:
                 return paramiko.AUTH_SUCCESSFUL
@@ -57,88 +72,128 @@ class StubSFTPHandle(paramiko.SFTPHandle):
             self._read_only = True
             self._bytesio.seek(0)
         # self.filename = path
+        self._modified = False
         self.readfile = self._bytesio
         self.writefile = self._bytesio
 
     def close(self):
-        super(StubSFTPHandle, self).close()
-        if not self._read_only:
+        if (not self._read_only) and self._modified:
             self._fileobj.data = self._bytesio.getvalue()
             self._fileobj.save()
+        super(StubSFTPHandle, self).close()
+
+    def write(self, offset, data):
+        self._modified = True
+        return super(StubSFTPHandle, self).write(offset, data)
 
     def stat(self):
-        return paramiko.sftp.SFTPAttributes.from_stat(self.fileobj.stat)
+        return paramiko.SFTPAttributes.from_stat(self.fileobj.stat)
 
     def chattr(self, attr):
-        return paramiko.sftp.SFTP_OP_UNSUPPORTED
+        return paramiko.SFTP_OP_UNSUPPORTED
 
 
-class StubSFTPServer(paramiko.sftp.SFTPServerInterface):
+class StubSFTPServer(paramiko.SFTPServerInterface):
 
     def __init__(self, server, *largs, **kwargs):
         super(StubSFTPServer, self).__init__(server, *largs, **kwargs)
         self.server = server
+        self.user = self.server.user
+        self.root = self.server.root
 
     def session_started(self):
         pass
 
     def session_ended(self):
-        pass
+        self.server = None
+
+    def _resolve(self, path):
+        if self.root:
+            return self.root, path
+        else:
+            l = path.split(os.path.sep)
+            if l[1]:
+                return None, '/'
+            else:
+                r = models.Root.objects.get(name=l[1])
+                return r, '/' + os.path.sep.join(l[2:])
 
     def list_folder(self, path):
         root, path = self._resolve(path)
         result = []
-        for fobj in root.ls(path):
-            attr = paramiko.sftp.SFTPAttributes.from_stat(fobj.stat)
-            attr.filename = fobj.filename
-            result.append(attr)
+        if root is None:
+            for r in models.Root.objects.all():
+                if not r.has_permission(self.user):
+                    continue
+                attr = paramiko.SFTPAttributes.from_stat()
+                attr.filename = r.name
+                attr.st_size = 0
+                attr.st_uid = 0
+                attr.st_gid = 0
+                attr.st_mode = _stat.S_IFDIR | 0x550
+                attr.st_atime = 0
+                attr.st_mtime = 0
+                result.append(attr)
+        else:
+            for fobj in root.ls(path):
+                attr = paramiko.SFTPAttributes.from_stat(fobj.stat)
+                attr.filename = fobj.filename
+                result.append(attr)
         return result
 
     def stat(self, path):
         root, path = self._resolve(path)
-        return paramiko.sftp.SFTPAttributes.from_stat(root.get(path).stat)
+        return paramiko.SFTPAttributes.from_stat(root.get(path).stat)
 
     def lstat(self, path):
         return self.stat(path)
 
     def open(self, path, flags, attr):
         root, path = self._resolve(path)
+        if not root:
+            return paramiko.SFTP_PERMISSION_DENIED
         if (not (flags & os.O_WRONLY)) and (
                 not ((flags & os.O_RDWR) and (flags & os.O_APPEND))):
             if not root.exists(path):
-                return paramiko.sftp.SFTP_NO_SUCH_FILE
+                return paramiko.SFTP_NO_SUCH_FILE
         if not root.exists(path):
             root.create(path)
         return StubSFTPHandle(self, root, path, flags)
 
     def remove(self, path):
         root, path = self._resolve(path)
+        if not root:
+            return paramiko.SFTP_PERMISSION_DENIED
         root.remove(path)
 
     def rename(self, oldpath, newpath):
         oldroot, oldpath = self._resolve(oldpath)
         newroot, newpath = self._resolve(newpath)
         if oldroot != newroot:
-            return paramiko.sftp.SFTP_OP_UNSUPPORTED
+            return paramiko.SFTP_OP_UNSUPPORTED
         else:
             oldroot.rename(oldpath, newpath)
-        return paramiko.sftp.SFTP_OK
+        return paramiko.SFTP_OK
 
     def mkdir(self, path, attr):
         root, path = self._resolve(path)
+        if not root:
+            return paramiko.SFTP_PERMISSION_DENIED
         root.mkdir(path)
-        return paramiko.sftp.SFTP_OK
+        return paramiko.SFTP_OK
 
     def rmdir(self, path):
         root, path = self._resolve(path)
+        if not root:
+            return paramiko.SFTP_PERMISSION_DENIED
         root.remove(path)
-        return paramiko.sftp.SFTP_OK
+        return paramiko.SFTP_OK
 
     def chattr(self, path, attr):
-        return paramiko.sftp.SFTP_OP_UNSUPPORTED
+        return paramiko.SFTP_OP_UNSUPPORTED
 
     def symlink(self, target_path, path):
-        return paramiko.sftp.SFTP_OP_UNSUPPORTED
+        return paramiko.SFTP_OP_UNSUPPORTED
 
     def readlink(self, path):
-        return paramiko.sftp.SFTP_OP_UNSUPPORTED
+        return paramiko.SFTP_OP_UNSUPPORTED

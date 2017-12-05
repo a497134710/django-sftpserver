@@ -66,8 +66,8 @@ class TestDjango_sftpserver_files(TestCase):
     def test_stat(self):
         self.root.put('/a', self.sample_data)
         self.root.mkdir('/b/')
-        self.assertEqual(self.root.get('/a').stat.st_mode, _stat.S_IFREG)
-        self.assertEqual(self.root.get('/b/').stat.st_mode, _stat.S_IFDIR)
+        self.assertTrue(self.root.get('/a').stat.st_mode & _stat.S_IFREG)
+        self.assertTrue(self.root.get('/b/').stat.st_mode & _stat.S_IFDIR)
 
     def test_remove_file(self):
         self.root.put('/a', self.sample_data)

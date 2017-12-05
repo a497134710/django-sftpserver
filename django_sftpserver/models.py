@@ -7,7 +7,6 @@ import os
 import six
 import hashlib
 import bsdiff4
-import re
 import stat as _stat
 import time as _time
 
@@ -26,7 +25,7 @@ def _timestamp(dt):
 
 @python_2_unicode_compatible
 class AuthorizedKey(models.Model):
-    name = models.CharField(max_length=256)
+    name = models.CharField(max_length=256, blank=True, null=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     key_type = models.CharField(max_length=32)
     key = models.CharField(max_length=512)
@@ -48,8 +47,8 @@ class Root(models.Model):
     class Meta:
         unique_together = (('name', 'branch', ))
 
-    magic_check = re.compile('([*?[])')
-    magic_check_bytes = re.compile(b'([*?[])')
+    def has_permission(self, user):
+        return user in self.users.all()
 
     def ls(self, path):
         if path != '/' and path.endswith('/'):
@@ -184,7 +183,7 @@ class MetaFile(MetaFileMixin, models.Model):
         s.st_size = 0 if self.isdir else self.size
         s.st_uid = 0
         s.st_gid = 0
-        s.st_mode = _stat.S_IFDIR if self.isdir else _stat.S_IFREG
+        s.st_mode = _stat.S_IFDIR | 0x770 if self.isdir else _stat.S_IFREG | 0x660
         s.st_atime = 0
         s.st_mtime = 0
         return s
