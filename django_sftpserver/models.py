@@ -9,12 +9,15 @@ import hashlib
 import bsdiff4
 import stat as _stat
 import time as _time
+import yaml
 
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.db import models
 from future.utils import python_2_unicode_compatible
+from django.utils.module_loading import import_string
+from django.core.files.storage import default_storage
 
 from django.utils.encoding import force_bytes
 
@@ -302,3 +305,27 @@ class CommitItem(MetaFileMixin, models.Model):
 
     def __str__(self):
         return 'CommitItem({})'.format(self.key)
+
+
+@python_2_unicode_compatible
+class StorageAccessInfo(models.Model):
+    name = models.CharField(max_length=256, unique=True)
+    users = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True)
+    groups = models.ManyToManyField(Group, blank=True)
+    storage_class = models.CharField(max_length=256, blank=True, null=True)
+    args = models.TextField(blank=True, null=True)
+    kwargs = models.TextField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    modified_at = models.DateTimeField(auto_now=True)
+
+    def get_storage(self):
+        if not self.storage_class:
+            return default_storage
+        Storage = import_string(self.storage_class)
+        args = yaml.load(self.args)
+        kwargs = yaml.load(self.kwargs)
+        return Storage(*args, **kwargs)
+
+    def has_permission(self, user):
+        return bool(user in self.users.all())

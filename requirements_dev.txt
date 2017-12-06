@@ -1,10 +1,12 @@
 Django==1.9.13
 PyNaCl==1.2.1
+PyYAML==3.12
 asn1crypto==0.23.0
 bcrypt==3.1.4
 bsdiff4==1.1.4
 bumpversion==0.5.3
 cffi==1.11.2
+coverage==4.4.2
 cryptography==2.1.4
 future==0.16.0
 idna==2.6

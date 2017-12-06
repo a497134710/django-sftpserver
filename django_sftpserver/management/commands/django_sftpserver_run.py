@@ -8,7 +8,7 @@ import paramiko
 import time
 
 from django.core.management.base import BaseCommand
-from ... import sftpserver
+from ... import sftpserver, storage_sftpserver
 
 
 class Command(BaseCommand):
@@ -32,6 +32,9 @@ class Command(BaseCommand):
             '-k', '--keyfile', dest='keyfile', metavar='FILE',
             help='Path to private key, for example /tmp/test_rsa.key'
         )
+        parser.add_argument(
+            '--storage-mode', action="store_true",
+        )
 
     def handle(self, *args, **options):
         paramiko_level = getattr(paramiko.common, options['level'])
@@ -42,6 +45,11 @@ class Command(BaseCommand):
         server_socket.bind((options['host'], options['port']))
         server_socket.listen(10)
 
+        if options['storage_mode']:
+            sftpserver_module = storage_sftpserver
+        else:
+            sftpserver_module = sftpserver
+
         transport_list = []
         try:
             while True:
@@ -50,9 +58,9 @@ class Command(BaseCommand):
                 transport = paramiko.Transport(conn)
                 transport.add_server_key(host_key)
                 transport.set_subsystem_handler(
-                    'sftp', paramiko.SFTPServer, sftpserver.StubSFTPServer)
+                    'sftp', paramiko.SFTPServer, sftpserver_module.StubSFTPServer)
 
-                server = sftpserver.StubServer(addr)
+                server = sftpserver_module.StubServer(addr)
                 transport.start_server(server=server)
                 channel = transport.accept()
 
