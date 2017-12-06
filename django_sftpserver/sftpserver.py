@@ -27,6 +27,10 @@ def _log_error(f):
 
 class StubServer(paramiko.ServerInterface):
 
+    def __init__(self, addr=None, *args, **kwargs):
+        self.client_addr = addr
+        super(StubServer, self).__init__(*args, **kwargs)
+
     def _set_username(self, username):
         root, branch = None, None
         if '/' in username:

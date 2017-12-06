@@ -52,7 +52,7 @@ class Command(BaseCommand):
                 transport.set_subsystem_handler(
                     'sftp', paramiko.SFTPServer, sftpserver.StubSFTPServer)
 
-                server = sftpserver.StubServer()
+                server = sftpserver.StubServer(addr)
                 transport.start_server(server=server)
                 channel = transport.accept()
 
