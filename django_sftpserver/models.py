@@ -23,7 +23,9 @@ from django.utils.encoding import force_bytes
 
 
 def _timestamp(dt):
-    if hasattr(dt, 'timestamp'):
+    if dt is None:
+        return 0
+    elif hasattr(dt, 'timestamp'):
         return dt.timestamp()
     return _time.mktime(dt.timetuple())
 
@@ -34,7 +36,7 @@ class AuthorizedKey(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     key_type = models.CharField(max_length=32)
     key = models.CharField(max_length=512)
-    comment = models.TextField()
+    comment = models.TextField(blank=True)
 
     class Meta:
         unique_together = (('user', 'name', ))
@@ -67,6 +69,8 @@ class Root(models.Model):
     def ls(self, path):
         if path != '/' and path.endswith('/'):
             path = path[:-1]
+        if path == '/' and not self.exists(path):
+            self.mkdir(path)
         fileobj = self.get(path)
         return MetaFile.objects.filter(parent=fileobj)
 
@@ -212,8 +216,8 @@ class MetaFile(MetaFileMixin, models.Model):
         s.st_mode |= _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IRGRP | _stat.S_IWGRP
         if self.isdir:
             s.st_mode |= _stat.S_IXUSR | _stat.S_IXGRP
-        s.st_atime = self.accessed_at
-        s.st_mtime = self.modified_at
+        s.st_atime = _timestamp(self.accessed_at)
+        s.st_mtime = _timestamp(self.modified_at)
         return s
 
     def update_path(self):
@@ -323,8 +327,8 @@ class StorageAccessInfo(models.Model):
         if not self.storage_class:
             return default_storage
         Storage = import_string(self.storage_class)
-        args = yaml.load(self.args)
-        kwargs = yaml.load(self.kwargs)
+        args = yaml.load(self.args) if self.args else ()
+        kwargs = yaml.load(self.kwargs) if self.kwargs else {}
         return Storage(*args, **kwargs)
 
     def has_permission(self, user):

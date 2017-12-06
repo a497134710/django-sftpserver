@@ -5,13 +5,14 @@ from __future__ import print_function
 
 import sys
 import os
-
+import uuid
+import shutil
 import paramiko
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from django_sftpserver import models, sftpserver
+from django_sftpserver import models, sftpserver, storage_sftpserver
 
 if sys.version_info[0] == 2:
     import backports.unittest_mock
@@ -92,7 +93,10 @@ class TestDjango_sftpserver_sftpserver_without_root(TestCase):
         self.sftpserver.session_started()
 
     def test_list_folder(self):
-        self.sftpserver.list_folder('/')
+        print(self.sftpserver.list_folder('/'))
+        print(self.sftpserver.list_folder('/root0'))
+        print(self.sftpserver.list_folder('/root1'))
+        # print(self.sftpserver.list_folder('/root2'))
 
     def test_stat(self):
         self.sftpserver.stat('/')
@@ -103,7 +107,6 @@ class TestDjango_sftpserver_sftpserver_without_root(TestCase):
 
     def test_open(self):
         self.root0.put("/a/b", b"b")
-        self.sftpserver.list_folder('/root0')
         self.sftpserver.list_folder('/root0/a')
         self.sftpserver.list_folder('/root0/a/b')
         print(self.sftpserver.open('/root0/a/b', os.O_RDONLY, None).readfile.getvalue())
@@ -120,3 +123,30 @@ class TestDjango_sftpserver_sftpserver_without_root(TestCase):
 
     def test_rmdir(self):
         pass
+
+
+class TestDjango_sftpserver_storage_sftpserver_with_root(TestCase):
+    storage_root = '/tmp/django_sftpserver_test-{}'.format(uuid.uuid4().hex)
+
+    def setUp(self):
+        if os.path.exists(self.storage_root):
+            shutil.rmtree(self.storage_root)
+        os.mkdir(self.storage_root)
+
+        self.storage_access_info = models.StorageAccessInfo.objects.create(
+            name="storage_example",
+            storage_class="django.core.files.storage.FileSystemStorage",
+            kwargs="location: {}".format(self.storage_root),
+        )
+        self.server = storage_sftpserver.StubServer()
+        self.server.user = None
+        self.server.storage_access_info = self.storage_access_info
+        self.sftpserver = storage_sftpserver.StubSFTPServer(self.server)
+        self.sftpserver.session_started()
+
+    def tearDown(self):
+        if os.path.exists(self.storage_root):
+            shutil.rmtree(self.storage_root)
+
+    def test_list_folder(self):
+        print([x.filename for x in self.sftpserver.list_folder("/")])

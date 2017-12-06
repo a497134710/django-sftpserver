@@ -8,6 +8,7 @@ import logging
 import paramiko
 import stat as _stat
 
+from django.core.files.base import ContentFile
 from django.contrib.auth import get_user_model
 from . import models
 
@@ -30,9 +31,18 @@ def _file_attr(storage, path):
     attr.st_size = storage.size(path)
     attr.st_uid = 0
     attr.st_gid = 0
-    attr.st_mode = _stat.S_IFDIR | _stat.S_IRUSR | _stat.S_IXUSR | _stat.S_IRGRP | _stat.S_IXGRP
-    attr.st_atime = storage.accessed_time(path)
-    attr.st_mtime = storage.modified_time(path)
+    directories, files = storage.listdir(os.path.dirname(path))
+    attr.st_mode = ((_stat.S_IFREG if os.path.basename(path) in files else _stat.S_IFDIR) |
+                    _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IXUSR |
+                    _stat.S_IRGRP | _stat.S_IWGRP | _stat.S_IXGRP)
+    if hasattr(storage, 'accessed_time'):
+        attr.st_atime = storage.accessed_time(path)
+    else:
+        attr.st_atime = 0
+    if hasattr(storage, 'modified_time'):
+        attr.st_mtime = storage.modified_time(path)
+    else:
+        attr.st_mtime = 0
     return attr
 
 
@@ -42,7 +52,9 @@ def _directory_attr(filename):
     attr.st_size = 0
     attr.st_uid = 0
     attr.st_gid = 0
-    attr.st_mode = _stat.S_IFDIR | _stat.S_IRUSR | _stat.S_IXUSR | _stat.S_IRGRP | _stat.S_IXGRP
+    attr.st_mode = (_stat.S_IFDIR |
+                    _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IXUSR |
+                    _stat.S_IRGRP | _stat.S_IWGRP | _stat.S_IXGRP)
     attr.st_atime = 0
     attr.st_mtime = 0
     return attr
@@ -68,7 +80,7 @@ class StubServer(paramiko.ServerInterface):
         if self.storage_name is None:
             valid_count = 0
             self.storage_access_info = None
-            for sai in models.StorageAccessInfo.all():
+            for sai in models.StorageAccessInfo.objects.all():
                 if sai.has_permission(self.user):
                     self.storage_access_info = sai
                     valid_count += 1
@@ -77,7 +89,7 @@ class StubServer(paramiko.ServerInterface):
             elif valid_count > 1:
                 self.storage_access_info = None
         else:
-            self.storage_access_info = models.StorageAccessInfo.get(name=self.storage_name)
+            self.storage_access_info = models.StorageAccessInfo.objects.get(name=self.storage_name)
         return self.storage_access_info.has_permission(self.user)
 
     @_log_error
@@ -119,17 +131,13 @@ class StubSFTPHandle(paramiko.SFTPHandle):
         if flags & os.O_WRONLY:
             if flags & os.O_APPEND:
                 fstr = 'ab'
-                self._bytesio.seek(self._fileobj.size)
             else:
                 fstr = 'wb'
-                self._bytesio.seek(0)
         elif flags & os.O_RDWR:
             if flags & os.O_APPEND:
                 fstr = 'a+b'
-                self._bytesio.seek(self._fileobj.size)
             else:
                 fstr = 'r+b'
-                self._bytesio.seek(0)
         else:  # O_RDONLY (== 0)
             fstr = 'rb'
 
@@ -155,11 +163,11 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         self.server = server
         self.user = self.server.user
         self.storage = None
-        if self.storage_access_info:
-            self.storage = self.storage_access_info.get_storage()
+        if server.storage_access_info:
+            self.storage = server.storage_access_info.get_storage()
         else:
             self.storages = {}
-            for sai in models.StorageAccessInfo.all():
+            for sai in models.StorageAccessInfo.objects.all():
                 if sai.has_permission(self.user):
                     self.storages[sai.name] = sai.get_storage()
         logger.debug("initialized")
@@ -175,13 +183,13 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
 
     def _resolve(self, path):
         if self.storage:
-            return self.storage, path
+            return self.storage, path[1:]
         else:
             l = path.split(os.path.sep)
             if not l[1]:
                 return None, '/'
             else:
-                return self.storages[l[1]], '/' + os.path.sep.join(l[2:])
+                return self.storages[l[1]], os.path.sep.join(l[2:])
 
     @_log_error
     def list_folder(self, path):
@@ -220,14 +228,12 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         storage, path = self._resolve(path)
         if not storage:
             return paramiko.SFTP_PERMISSION_DENIED
-        if storage.exists(path) and storage.get(path).isdir:
-            return paramiko.SFTP_PERMISSION_DENIED
         if (not (flags & os.O_WRONLY)) and (
                 not ((flags & os.O_RDWR) and (flags & os.O_APPEND))):
             if not storage.exists(path):
                 return paramiko.SFTP_NO_SUCH_FILE
-        # if not storage.exists(path):
-        #     storage.create(path)
+        if not storage.exists(path):
+            storage.save(path, ContentFile(b''))
         return StubSFTPHandle(self, storage, path, flags)
 
     @_log_error
@@ -258,7 +264,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
             return paramiko.SFTP_PERMISSION_DENIED
         if storage.exists(path):
             return paramiko.SFTP_OP_UNSUPPORTED
-        storage.open(os.path.join(path, '_'), 'wb')
+        storage.save(os.path.join(path, '_'), ContentFile(b''))
         storage.delete(os.path.join(path, '_'))
         return paramiko.SFTP_OK
 

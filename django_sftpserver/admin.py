@@ -36,3 +36,8 @@ class CommitAdmin(admin.ModelAdmin):
 @admin.register(models.CommitItem)
 class CommitItemAdmin(admin.ModelAdmin):
     list_display = ('id', 'commit', 'path', 'key')
+
+
+@admin.register(models.StorageAccessInfo)
+class StorageAccessInfoAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'storage_class', 'args', 'kwargs')

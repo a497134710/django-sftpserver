@@ -149,6 +149,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         self.server = None
 
     def _resolve(self, path):
+        path = self.canonicalize(path)
         if self.root:
             return self.root, path
         else:
@@ -157,6 +158,8 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
                 return None, '/'
             else:
                 r = models.Root.objects.get(name=l[1])
+                if not r.has_permission(self.user):
+                    raise Exception()
                 return r, '/' + os.path.sep.join(l[2:])
 
     def _directory_attr(self, filename):
@@ -185,6 +188,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
                 attr = paramiko.SFTPAttributes.from_stat(fobj.stat)
                 attr.filename = fobj.filename
                 result.append(attr)
+        logger.debug('list folder : {} -> {}'.format(path, result))
         return result
 
     @_log_error
@@ -195,6 +199,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
             return self._directory_attr('/')
         if not root.exists(path):
             return paramiko.SFTP_NO_SUCH_FILE
+        logger.debug('stat result : {} => {}'.format(path, paramiko.SFTPAttributes.from_stat(root.get(path).stat)))
         return paramiko.SFTPAttributes.from_stat(root.get(path).stat)
 
     @_log_error

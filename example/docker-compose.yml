@@ -52,9 +52,19 @@ services:
   web_sftp:
     extends:
       web_base
-    command: bash -c "sleep 15; python manage.py django_sftpserver_run -k /etc/sftp_host_key"
+    command: bash -c "sleep 5; python manage.py django_sftpserver_run -k /etc/sftp_host_key"
     ports:
       - "42045:2222"
+    depends_on:
+      - redis
+      - db
+
+  web_sftp_st:
+    extends:
+      web_base
+    command: bash -c "sleep 5; python manage.py django_sftpserver_run --storage-mode -k /etc/sftp_host_key"
+    ports:
+      - "42046:2222"
     depends_on:
       - redis
       - db
