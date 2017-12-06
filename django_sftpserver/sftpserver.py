@@ -29,10 +29,14 @@ class StubServer(paramiko.ServerInterface):
 
     def _set_username(self, username):
         root, branch = None, None
-        if ':' in username:
-            username, root = username.split(':')
-            if '/' in root:
-                root, branch = root.split('/')
+        if '/' in username:
+            username = username.split('/')
+            if len(username) == 2:
+                username, root = username
+            elif len(username) == 3:
+                username, root, branch = username
+            else:
+                return False
         self.username = username
         self.user = get_user_model().objects.get(username=username)
         self.root_name = root
@@ -42,12 +46,14 @@ class StubServer(paramiko.ServerInterface):
                 name=self.root_name, branch=self.branch_name)
         else:
             self.root = None
+        return True
 
     @_log_error
     def check_auth_publickey(self, username, key):
         logger.debug('authenticating {}'.format(username))
         try:
-            self._set_username(username)
+            if not self._set_username(username):
+                return paramiko.AUTH_FAILED
         except get_user_model().DoesNotExist:
             return paramiko.AUTH_FAILED
         except models.Root.DoesNotExist:
@@ -181,7 +187,6 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
     def stat(self, path):
         logger.debug('stat: {}'.format(path))
         root, path = self._resolve(path)
-        print('stat', root, path)
         if not root:
             return self._directory_attr('/')
         if not root.exists(path):
@@ -200,9 +205,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         if not root:
             return paramiko.SFTP_PERMISSION_DENIED
         if root.exists(path) and root.get(path).isdir:
-            print("path is directory ", path)
             return paramiko.SFTP_PERMISSION_DENIED
-        print('flags=', (flags & os.O_WRONLY))
         if (not (flags & os.O_WRONLY)) and (
                 not ((flags & os.O_RDWR) and (flags & os.O_APPEND))):
             if not root.exists(path):
@@ -250,21 +253,15 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
 
     @_log_error
     def chattr(self, path, attr):
-        # print("chattr", path, attr)
-        # return paramiko.SFTP_OK
         logger.debug("chattr '{}' '{}'".format(path, attr))
         return paramiko.SFTP_OP_UNSUPPORTED
 
     @_log_error
     def symlink(self, target_path, path):
-        # print("symlink", target_path, path)
-        # return paramiko.SFTP_OK
         logger.debug("symlink '{}' '{}'".format(target_path, path))
         return paramiko.SFTP_OP_UNSUPPORTED
 
     @_log_error
     def readlink(self, path):
-        # print("readlink", path)
-        # return paramiko.SFTP_OK
         logger.debug("readlink '{}'".format(path))
         return paramiko.SFTP_OP_UNSUPPORTED

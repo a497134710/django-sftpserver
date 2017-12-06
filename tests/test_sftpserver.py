@@ -51,15 +51,15 @@ class TestDjango_sftpserver_sftpserver(TestCase):
 
     def test_auth_root(self):
         server = sftpserver.StubServer()
-        name = '{}:{}'.format(self.valid_username, self.valid_root_name)
+        name = '{}/{}'.format(self.valid_username, self.valid_root_name)
         self.assertEqual(server.check_auth_publickey(name, self.valid_key),
                          paramiko.AUTH_SUCCESSFUL)
 
-        name = '{}:{}'.format(self.valid_username, self.valid_root_name_2)
+        name = '{}/{}'.format(self.valid_username, self.valid_root_name_2)
         self.assertEqual(server.check_auth_publickey(name, self.valid_key),
                          paramiko.AUTH_FAILED)
 
-        name = '{}:{}invalid'.format(self.valid_username, self.valid_root_name)
+        name = '{}/{}invalid'.format(self.valid_username, self.valid_root_name)
         self.assertEqual(server.check_auth_publickey(name, self.valid_key),
                          paramiko.AUTH_FAILED)
 
