@@ -162,6 +162,12 @@ class MetaFileMixin(object):
         return value
 
     @property
+    def modified_at(self):
+        if self.key is None:
+            return self.created_at
+        return Data.objects.get(key=self.key).created_at
+
+    @property
     def data(self):
         return Data.get(self.key)
 
@@ -180,6 +186,8 @@ class MetaFile(MetaFileMixin, models.Model):
     path = models.CharField(max_length=4096)
     filename = models.CharField(max_length=1024)
     key = models.CharField(max_length=40, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    accessed_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
         unique_together = (('root', 'path'))
@@ -201,8 +209,8 @@ class MetaFile(MetaFileMixin, models.Model):
         s.st_mode |= _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IRGRP | _stat.S_IWGRP
         if self.isdir:
             s.st_mode |= _stat.S_IXUSR | _stat.S_IXGRP
-        s.st_atime = 0
-        s.st_mtime = 0
+        s.st_atime = self.accessed_at
+        s.st_mtime = self.modified_at
         return s
 
     def update_path(self):
@@ -218,6 +226,7 @@ class Data(models.Model):
     parent_key = models.CharField(max_length=40, blank=True, null=True)
     size = models.IntegerField(blank=True, null=True)
     data = models.BinaryField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return 'Data({})'.format(self.key)
