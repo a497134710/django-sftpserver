@@ -45,6 +45,11 @@ class TestDjango_sftpserver_files(TestCase):
         self.root.put('/a', self.sample_data)
         self.assertEqual(self.root.get('/a').data, self.sample_data)
 
+    def test_create(self):
+        self.root.create('/a')
+        self.assertEqual(self.root.get('/a').data, b'')
+        self.assertFalse(self.root.get('/a').isdir)
+
     def test_put_file(self):
         self.root.put('/a', self.sample_data)
         self.assertEqual(models.Data.objects.all().count(), 1)

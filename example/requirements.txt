@@ -4,3 +4,6 @@
 # Your app in editable mode.
 # -e ../
 psycopg2
+redis
+hiredis
+django-redis-cache

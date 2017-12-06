@@ -1,4 +1,4 @@
-Django==1.11
+Django==1.9.13
 PyNaCl==1.2.1
 asn1crypto==0.23.0
 bcrypt==3.1.4

@@ -56,11 +56,6 @@ class Command(BaseCommand):
                 transport.start_server(server=server)
                 channel = transport.accept()
 
-                print("OK!", transport, channel)
-                while transport.is_active():
-                    print("sleeping...")
-                    time.sleep(1)
-
                 transport_list.append((transport, channel))
         except KeyboardInterrupt:
             for transport, channel in transport_list:

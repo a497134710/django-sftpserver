@@ -4,7 +4,7 @@ from __future__ import unicode_literals
 from __future__ import print_function
 
 import sys
-
+import os
 
 import paramiko
 
@@ -79,4 +79,44 @@ class TestDjango_sftpserver_sftpserver_with_root(TestCase):
 
 class TestDjango_sftpserver_sftpserver_without_root(TestCase):
     def setUp(self):
+        self.user = get_user_model().objects.create(username="user")
+        self.root0 = models.Root.objects.create(name="root0")
+        self.root1 = models.Root.objects.create(name="root1")
+        self.root2 = models.Root.objects.create(name="root2")
+        self.root0.users.add(self.user)
+        self.root1.users.add(self.user)
+        self.server = sftpserver.StubServer()
+        self.server.user = self.user
+        self.server.root = None
+        self.sftpserver = sftpserver.StubSFTPServer(self.server)
+        self.sftpserver.session_started()
+
+    def test_list_folder(self):
+        self.sftpserver.list_folder('/')
+
+    def test_stat(self):
+        self.sftpserver.stat('/')
+        self.root0.put("/a/b", b"c")
+        self.sftpserver.stat('/root0/')
+        self.sftpserver.stat('/root0/a')
+        self.sftpserver.stat('/root0/a/b')
+
+    def test_open(self):
+        self.root0.put("/a/b", b"b")
+        self.sftpserver.list_folder('/root0')
+        self.sftpserver.list_folder('/root0/a')
+        self.sftpserver.list_folder('/root0/a/b')
+        print(self.sftpserver.open('/root0/a/b', os.O_RDONLY, None).readfile.getvalue())
+        self.sftpserver.open('/root0/a/c', os.O_WRONLY, None).write(0, b'c')
+
+    def test_remove(self):
+        pass
+
+    def test_rename(self):
+        pass
+
+    def test_mkdir(self):
+        pass
+
+    def test_rmdir(self):
         pass

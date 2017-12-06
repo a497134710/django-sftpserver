@@ -16,6 +16,8 @@ from django.core.cache import cache
 from django.db import models
 from future.utils import python_2_unicode_compatible
 
+from django.utils.encoding import force_bytes
+
 
 def _timestamp(dt):
     if hasattr(dt, 'timestamp'):
@@ -34,21 +36,30 @@ class AuthorizedKey(models.Model):
     class Meta:
         unique_together = (('user', 'name', ))
 
+    def __str__(self):
+        return 'AuthorizedKey({})'.format(self.name)
+
 
 @python_2_unicode_compatible
 class Root(models.Model):
     name = models.CharField(max_length=256)
     branch = models.CharField(max_length=256, blank=True, null=True)
-    users = models.ManyToManyField(settings.AUTH_USER_MODEL)
-    groups = models.ManyToManyField(Group)
+    users = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True)
+    groups = models.ManyToManyField(Group, blank=True)
     base_commit = models.ForeignKey("Commit", blank=True, null=True,
                                     on_delete=models.SET_NULL, related_name='+')
 
     class Meta:
         unique_together = (('name', 'branch', ))
 
+    def __str__(self):
+        branch = ''
+        if self.branch:
+            branch = '-' + self.branch
+        return 'root({}{})'.format(self.name, branch)
+
     def has_permission(self, user):
-        return user in self.users.all()
+        return bool(user in self.users.all())
 
     def ls(self, path):
         if path != '/' and path.endswith('/'):
@@ -173,6 +184,9 @@ class MetaFile(MetaFileMixin, models.Model):
     class Meta:
         unique_together = (('root', 'path'))
 
+    def __str__(self):
+        return 'MetaFile({})'.format(self.path)
+
     @property
     def isdir(self):
         return self.key is None
@@ -183,7 +197,10 @@ class MetaFile(MetaFileMixin, models.Model):
         s.st_size = 0 if self.isdir else self.size
         s.st_uid = 0
         s.st_gid = 0
-        s.st_mode = _stat.S_IFDIR | 0x770 if self.isdir else _stat.S_IFREG | 0x660
+        s.st_mode = _stat.S_IFDIR if self.isdir else _stat.S_IFREG
+        s.st_mode |= _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IRGRP | _stat.S_IWGRP
+        if self.isdir:
+            s.st_mode |= _stat.S_IXUSR | _stat.S_IXGRP
         s.st_atime = 0
         s.st_mtime = 0
         return s
@@ -202,6 +219,9 @@ class Data(models.Model):
     size = models.IntegerField(blank=True, null=True)
     data = models.BinaryField(blank=True, null=True)
 
+    def __str__(self):
+        return 'Data({})'.format(self.key)
+
     @classmethod
     def get(klass, key):
         value = cache.get(key)
@@ -209,11 +229,11 @@ class Data(models.Model):
             return value
         o = klass.objects.get(key=key)
         if o.parent_key is None:
-            value = o.data
+            value = force_bytes(o.data)
         else:
             parent_data = klass.get(o.parent_key)
             value = klass._merge(parent_data, o.data)
-        cache.set(key, value, None)
+        cache.set(key, force_bytes(value), None)
         return value
 
     @classmethod
@@ -223,16 +243,17 @@ class Data(models.Model):
         if len(value) > 100 * 1024 * 1024:
             raise Exception("file size exceed")
         key = hashlib.sha1(value).hexdigest()
-        cache.set(key, value, None)
+        cache.set(key, force_bytes(value), None)
         size = len(value)
         if not klass.objects.filter(key=key).exists():
-            if len(value) > 512 and parent_key:
+            if parent_key:
                 parent_data = klass.get(key=parent_key)
                 patch = bsdiff4.diff(parent_data, value)
-                if 2 * len(patch) < len(value):
+                if len(value) > 512 and 2 * len(patch) < len(value):
                     value = patch
                 else:
                     parent_key = None
+
             klass.objects.create(key=key, parent_key=parent_key, data=value, size=size)
         return key
 
@@ -257,6 +278,9 @@ class Commit(models.Model):
     merge_commit = models.ForeignKey("self", blank=True, null=True,
                                      on_delete=models.PROTECT, related_name='merge_destinations')
 
+    def __str__(self):
+        return 'Commit({})'.format(self.name)
+
 
 @python_2_unicode_compatible
 class CommitItem(MetaFileMixin, models.Model):
@@ -266,3 +290,6 @@ class CommitItem(MetaFileMixin, models.Model):
 
     class Meta:
         unique_together = (('commit', 'path', ))
+
+    def __str__(self):
+        return 'CommitItem({})'.format(self.key)
