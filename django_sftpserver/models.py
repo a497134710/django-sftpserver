@@ -142,13 +142,25 @@ class Root(models.Model):
         parent = self.mkdir_if_not_exists(dirname)
         return MetaFile.objects.create(root=self, parent=parent, filename=basename, path=path)
 
+    @property
+    def dirty(self):
+        if not self.base_commit:
+            return True
+        commit_items = {x.path: x.key
+                        for x in CommitItem.objects.filter(commit=self.base_commit)}
+        for item in MetaFile.objects.filter(root=self).order_by("path"):
+            value = commit_items.pop(item.path, False)
+            if value is not item.key:
+                return True
+        return bool(commit_items)
+
     def commit(self):
         c = Commit.objects.create(root=self, parent_commit=self.base_commit)
         self.base_commit = c
         self.save()
 
         h = hashlib.sha1('{}'.format(_timestamp(c.created_at)).encode('UTF-8'))
-        for item in MetaFile.objects.all().order_by("path"):
+        for item in MetaFile.objects.filter(root=self).order_by("path"):
             CommitItem.objects.create(commit=c, path=item.path, key=item.key)
             h.update(item.path.encode('UTF-8'))
             if item.key:
