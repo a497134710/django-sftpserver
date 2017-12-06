@@ -7,42 +7,60 @@ import os
 import logging
 import paramiko
 import stat as _stat
+import time as _time
 
 from django.core.files.base import ContentFile
 from django.contrib.auth import get_user_model
 from . import models
 
 logger = logging.getLogger(__name__)
+logger.debug = logger.error
 
 
 def _log_error(f):
     def wrapper(*args, **kwargs):
         try:
-            return f(*args, **kwargs)
+            # return f(*args, **kwargs)
+            retval = f(*args, **kwargs)
+            logger.debug("return value : {}".format(retval))
+            return retval
         except:
             logger.exception('Unexpected Error')
             raise
     return wrapper
 
 
+def _timestamp(dt):
+    if dt is None:
+        return 0
+    elif hasattr(dt, 'timestamp'):
+        return dt.timestamp()
+    return _time.mktime(dt.timetuple())
+
+
 def _file_attr(storage, path):
     attr = paramiko.SFTPAttributes()
     attr.filename = os.path.basename(path)
-    attr.st_size = storage.size(path)
+    try:
+        attr.st_size = storage.size(path)
+    except:
+        attr.st_size = 0
     attr.st_uid = 0
     attr.st_gid = 0
     directories, files = storage.listdir(os.path.dirname(path))
-    attr.st_mode = ((_stat.S_IFREG if os.path.basename(path) in files else _stat.S_IFDIR) |
+    logger.debug('check {} : {}, {}'.format(path, directories, files))
+    attr.st_mode = ((_stat.S_IFREG if (path and (os.path.basename(path) in files)) else _stat.S_IFDIR) |
                     _stat.S_IRUSR | _stat.S_IWUSR | _stat.S_IXUSR |
                     _stat.S_IRGRP | _stat.S_IWGRP | _stat.S_IXGRP)
-    if hasattr(storage, 'accessed_time'):
-        attr.st_atime = storage.accessed_time(path)
-    else:
+    try:
+        attr.st_atime = _timestamp(storage.accessed_time(path))
+    except:
         attr.st_atime = 0
-    if hasattr(storage, 'modified_time'):
-        attr.st_mtime = storage.modified_time(path)
-    else:
+    try:  # if hasattr(storage, 'modified_time'):
+        attr.st_mtime = _timestamp(storage.modified_time(path))
+    except:
         attr.st_mtime = 0
+    logger.debug('{} : {}'.format(path, attr))
     return attr
 
 
@@ -82,12 +100,10 @@ class StubServer(paramiko.ServerInterface):
             self.storage_access_info = None
             for sai in models.StorageAccessInfo.objects.all():
                 if sai.has_permission(self.user):
-                    self.storage_access_info = sai
                     valid_count += 1
             if valid_count == 0:
                 return False
-            elif valid_count > 1:
-                self.storage_access_info = None
+            return True
         else:
             self.storage_access_info = models.StorageAccessInfo.objects.get(name=self.storage_name)
         return self.storage_access_info.has_permission(self.user)
@@ -200,10 +216,15 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
             for storage_name in self.storages:
                 result.append(_directory_attr(storage_name))
         else:
+            logger.debug('list folder : {} {}'.format(storage, path))
             directories, files = storage.listdir(path)
             for directory in directories:
+                if not directory:
+                    continue
                 result.append(_directory_attr(directory))
             for filename in files:
+                if not filename:
+                    continue
                 result.append(_file_attr(storage, os.path.join(path, filename)))
         return result
 
@@ -213,8 +234,9 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         storage, path = self._resolve(path)
         if not storage:
             return _directory_attr('/')
-        if not storage.exists(path):
-            return paramiko.SFTP_NO_SUCH_FILE
+        # TODO
+        # if not storage.exists(path):
+        #     return paramiko.SFTP_NO_SUCH_FILE
         return _file_attr(storage, path)
 
     @_log_error

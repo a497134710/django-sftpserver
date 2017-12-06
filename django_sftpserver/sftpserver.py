@@ -199,7 +199,8 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
             return self._directory_attr('/')
         if not root.exists(path):
             return paramiko.SFTP_NO_SUCH_FILE
-        logger.debug('stat result : {} => {}'.format(path, paramiko.SFTPAttributes.from_stat(root.get(path).stat)))
+        logger.debug('stat result : {} => {}'.format(
+            path, paramiko.SFTPAttributes.from_stat(root.get(path).stat)))
         return paramiko.SFTPAttributes.from_stat(root.get(path).stat)
 
     @_log_error
@@ -233,7 +234,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
 
     @_log_error
     def rename(self, oldpath, newpath):
-        logger.debug("rnemae {} -> {}".format(oldpath, newpath))
+        logger.debug("rename {} -> {}".format(oldpath, newpath))
         oldroot, oldpath = self._resolve(oldpath)
         newroot, newpath = self._resolve(newpath)
         if oldroot != newroot:

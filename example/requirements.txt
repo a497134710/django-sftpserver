@@ -7,3 +7,6 @@ psycopg2
 redis
 hiredis
 django-redis-cache
+boto
+botocore
+django-storages
