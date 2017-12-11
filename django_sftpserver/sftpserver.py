@@ -67,7 +67,7 @@ class StubServer(paramiko.ServerInterface):
             return paramiko.AUTH_FAILED
 
         for public_key in models.AuthorizedKey.objects.filter(user=self.user):
-            if key.get_base64() == public_key.key:
+            if key.get_name() == public_key.key_type and key.get_base64() == public_key.key:
                 return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
 

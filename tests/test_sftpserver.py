@@ -30,10 +30,12 @@ class TestDjango_sftpserver_sftpserver(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create(username=self.valid_username)
         self.valid_key = Mock()
+        self.valid_key.get_name = Mock(return_value='ssh-rsa')
         self.valid_key.get_base64 = Mock(return_value='public_key')
         self.invalid_key = Mock()
+        self.invalid_key.get_name = Mock(return_value='ssh-rsa')
         self.invalid_key.get_base64 = Mock(return_value='public_key2')
-        models.AuthorizedKey.objects.create(user=self.user, key='public_key')
+        models.AuthorizedKey.objects.create(user=self.user, key_type='ssh-rsa', key='public_key')
         root = models.Root.objects.create(name=self.valid_root_name)
         root.users.add(self.user)
         models.Root.objects.create(name=self.valid_root_name_2)
