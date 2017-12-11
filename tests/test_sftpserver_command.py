@@ -3,6 +3,7 @@ from __future__ import absolute_import
 from __future__ import unicode_literals
 from __future__ import print_function
 
+import sys
 import socket
 import threading
 import uuid
@@ -126,3 +127,6 @@ class TestDjango_sftpserver_sftpserver_command_filesystemstorage(ServerMixin, Te
         with self.create_client() as client:
             print(client.listdir(), client.listdir_attr())
 
+if sys.version_info[0] == 2:
+    for i in (x for x in dir() if x.startswith("TestDjango_sftpserver")):
+        globals().pop(i)
