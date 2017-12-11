@@ -14,7 +14,6 @@ from django.contrib.auth import get_user_model
 from . import models
 
 logger = logging.getLogger(__name__)
-logger.debug = logger.error
 
 
 def _log_error(f):
@@ -198,6 +197,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         self.server = None
 
     def _resolve(self, path):
+        path = self.canonicalize(path)
         if self.storage:
             return self.storage, path[1:]
         else:

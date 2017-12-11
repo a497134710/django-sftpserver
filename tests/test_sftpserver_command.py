@@ -9,10 +9,12 @@ import uuid
 import os
 import time
 import paramiko
+import shutil
 from contextlib import contextmanager
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+# from django.test import SimpleTestCase as TestCase
 
 from django_sftpserver.management.commands.django_sftpserver_run import Command
 from django_sftpserver import models
@@ -42,11 +44,16 @@ class ServerMixin(object):
         while not os.path.exists(self.socket_filename):
             time.sleep(0.1)
 
+        self.user = get_user_model().objects.create(username=self.username)
+        models.AuthorizedKey.objects.create(
+            user=self.user, key_type=self.pkey.get_name(), key=self.pkey.get_base64())
+
     def run_server(self):
-        self.__command.handle(level='INFO', socket_filename=self.socket_filename,
+        self.__command.handle(level='ERROR', socket_filename=self.socket_filename,
                               storage_mode=self.storage_mode, pkey=self.pkey, accept_timeout=1)
 
     def stop_server(self):
+        time.sleep(1)
         client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         client.connect(self.socket_filename)
         self.__command.cont = False
@@ -72,19 +79,50 @@ class ServerMixin(object):
 
 
 class TestDjango_sftpserver_sftpserver_command(ServerMixin, TestCase):
-    root_name = 'root'
+    root_name_0 = 'root_0'
+    root_name_1 = 'root_1'
 
     def setUp(self):
+        super(TestDjango_sftpserver_sftpserver_command, self).setUp()
         self.start_server()
-        self.user = get_user_model().objects.create(username=self.username)
-        models.AuthorizedKey.objects.create(
-            user=self.user, key_type=self.pkey.get_name(), key=self.pkey.get_base64())
-        root = models.Root.objects.create(name=self.root_name)
+        root = models.Root.objects.create(name=self.root_name_0)
+        root.users.add(self.user)
+        root = models.Root.objects.create(name=self.root_name_1)
         root.users.add(self.user)
 
     def tearDown(self):
         self.stop_server()
+        super(TestDjango_sftpserver_sftpserver_command, self).tearDown()
 
-    def test_login(self):
+    def test_listdir(self):
+        # stat, open, remove, rename, mkdir, rmdir
         with self.create_client() as client:
-            print(client.listdir())
+            print(client.listdir(), client.listdir_attr())
+
+
+class TestDjango_sftpserver_sftpserver_command_filesystemstorage(ServerMixin, TestCase):
+    storage_mode = True
+
+    storage_name_0 = 'storage_name_0'
+
+    def setUp(self):
+        super(TestDjango_sftpserver_sftpserver_command_filesystemstorage, self).setUp()
+        self.start_server()
+        self.storage_root_0 = '/tmp/django_sftpserver_test-{}'.format(uuid.uuid4().hex)
+        sai = models.StorageAccessInfo.objects.create(
+            name=self.storage_name_0,
+            storage_class="django.core.files.storage.FileSystemStorage",
+            kwargs="location: {}".format(self.storage_root_0))
+        sai.users.add(self.user)
+
+    def tearDown(self):
+        self.stop_server()
+        if os.path.exists(self.storage_root_0):
+            shutil.rmtree(self.storage_root_0)
+            super(TestDjango_sftpserver_sftpserver_command_filesystemstorage, self).tearDown()
+
+    def test_listdir(self):
+        # stat, open, remove, rename, mkdir, rmdir
+        with self.create_client() as client:
+            print(client.listdir(), client.listdir_attr())
+
