@@ -12,6 +12,9 @@ import time
 import paramiko
 import shutil
 from contextlib import contextmanager
+from moto import mock_s3
+import boto3
+import yaml
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -120,12 +123,56 @@ class TestDjango_sftpserver_sftpserver_command_filesystemstorage(ServerMixin, Te
         self.stop_server()
         if os.path.exists(self.storage_root_0):
             shutil.rmtree(self.storage_root_0)
-            super(TestDjango_sftpserver_sftpserver_command_filesystemstorage, self).tearDown()
+        super(TestDjango_sftpserver_sftpserver_command_filesystemstorage, self).tearDown()
 
     def test_listdir(self):
         # stat, open, remove, rename, mkdir, rmdir
         with self.create_client() as client:
             print(client.listdir(), client.listdir_attr())
+
+
+class TestDjango_sftpserver_sftpserver_command_s3storage(ServerMixin, TestCase):
+    storage_mode = True
+
+    storage_name_0 = 'storage_name_0'
+
+    def setUp(self):
+        self.__mock = mock_s3()
+        self.__mock.start()
+
+        super(TestDjango_sftpserver_sftpserver_command_s3storage, self).setUp()
+        self.start_server()
+
+        conn = boto3.resource('s3', region_name='us-west-2')
+        conn.create_bucket(Bucket='testxxxx')
+
+        kwargs = {
+            'access_key': 'AKIAAAAAAAAAAAAAAAAA',
+            'secret_key': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            'bucket_name': 'testxxxx',
+            'host': 's3-us-west-2.amazonaws.com',
+            # 'default_acl': 'private',
+            'location': 'test_sftp',
+            # 'url_protocol': 'https',
+        }
+
+        sai = models.StorageAccessInfo.objects.create(
+            name=self.storage_name_0,
+            storage_class="storages.backends.s3boto.S3BotoStorage",
+            kwargs=yaml.dump(kwargs))
+        sai.users.add(self.user)
+
+    def tearDown(self):
+        self.stop_server()
+        super(TestDjango_sftpserver_sftpserver_command_s3storage, self).tearDown()
+        self.__mock.stop()
+
+    def test_listdir(self):
+        # stat, open, remove, rename, mkdir, rmdir
+        with self.create_client() as client:
+            print(client.listdir(), client.listdir_attr())
+            print(client.listdir('./{}'.format(self.storage_name_0)), client.listdir_attr())
+
 
 if sys.version_info[0] == 2:
     for i in (x for x in dir() if x.startswith("TestDjango_sftpserver")):
