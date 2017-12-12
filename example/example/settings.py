@@ -451,12 +451,12 @@ if MODE == 'test':
 ############################################
 # mail
 ############################################
-SERVER_EMAIL = os.environ.get("SERVER_EMAIL", '{}.dev@sizebook.co.jp'.format(PROJECT_NAME))
+SERVER_EMAIL = os.environ.get("SERVER_EMAIL", '{}@***.co.jp'.format(PROJECT_NAME))
 EMAIL_SUBJECT_PREFIX = "[{}]".format(PROJECT_NAME)
 email_type = os.environ.get("EMAIL_TYPE", "console")
 USE_AWS_SES = False
 DEFAULT_FROM_EMAIL = os.environ.get(
-    'DEFAULT_FROM_EMAIL', 'sizebook <dev@sizebook.co.jp>')
+    'DEFAULT_FROM_EMAIL', '*** <**@***.co.jp>')
 if email_type == "smtp":
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     EMAIL_HOST = os.environ.get("EMAIL_HOST", '127.0.0.1')

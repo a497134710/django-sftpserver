@@ -325,6 +325,17 @@ class CommitItem(MetaFileMixin, models.Model):
 
 @python_2_unicode_compatible
 class StorageAccessInfo(models.Model):
+    '''
+storages.backends.s3boto.S3BotoStorage
+
+access_key: AKIAAAAAAAAAAAAAAAAA
+secret_key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+bucket_name: s3-test
+host: s3-us-west-2.amazonaws.com
+default_acl: private
+location: test_sftp
+url_protocol: https
+    '''
     name = models.CharField(max_length=256, unique=True)
     users = models.ManyToManyField(settings.AUTH_USER_MODEL, blank=True)
     groups = models.ManyToManyField(Group, blank=True)
