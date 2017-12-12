@@ -21,3 +21,4 @@ django-redis-cache
 boto
 botocore
 django-storages
+flask

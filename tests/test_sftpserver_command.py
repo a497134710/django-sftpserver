@@ -6,15 +6,17 @@ from __future__ import print_function
 import sys
 import socket
 import threading
+import multiprocessing
 import uuid
 import os
 import time
 import paramiko
 import shutil
 from contextlib import contextmanager
-from moto import mock_s3
-import boto3
+import moto.server as moto_server
+import boto
 import yaml
+import random
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -134,38 +136,55 @@ class TestDjango_sftpserver_sftpserver_command_filesystemstorage(ServerMixin, Te
 class TestDjango_sftpserver_sftpserver_command_s3storage(ServerMixin, TestCase):
     storage_mode = True
 
-    storage_name_0 = 'storage_name_0'
+    storage_name_0 = 's3_storage_name_0'
 
     def setUp(self):
-        self.__mock = mock_s3()
-        self.__mock.start()
+        fake_s3_port = random.randint(10000, 65535)
+        main_app = moto_server.DomainDispatcherApplication(
+            moto_server.create_backend_app, service='s3')
+        main_app.debug = True
+        self.__thread = multiprocessing.Process(
+            target=moto_server.run_simple,
+            args=('127.0.0.1', fake_s3_port, main_app, ),
+            kwargs={'threaded': False, 'use_reloader': False, 'ssl_context': None})
+        self.__thread.start()
 
         super(TestDjango_sftpserver_sftpserver_command_s3storage, self).setUp()
         self.start_server()
 
-        conn = boto3.resource('s3', region_name='us-west-2')
-        conn.create_bucket(Bucket='testxxxx')
+        # conn = boto.resource('s3', region_name='127.0.0.1')
+        # conn.create_bucket(Bucket='testxxxx')
 
         kwargs = {
-            'access_key': 'AKIAAAAAAAAAAAAAAAAA',
-            'secret_key': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+            # 'access_key': 'AKIAAAAAAAAAAAAAAAAA',
+            # 'secret_key': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
             'bucket_name': 'testxxxx',
-            'host': 's3-us-west-2.amazonaws.com',
+            # 'proxy': b'127.0.0.1',
+            # 'proxy_port': fake_s3_port,
+            # 'host': '127.0.0.1',
+            # 'port': fake_s3_port,
             # 'default_acl': 'private',
             'location': 'test_sftp',
-            # 'url_protocol': 'https',
+            'url_protocol': 'http',
+            'secure_urls': False,
+            # 'endpoint_url': '127.0.0.1:{}'.format(fake_s3_port),
+            'endpoint_url': 'http://localhost:{}'.format(fake_s3_port),
+            'auto_create_bucket': True,
         }
 
         sai = models.StorageAccessInfo.objects.create(
             name=self.storage_name_0,
-            storage_class="storages.backends.s3boto.S3BotoStorage",
+            storage_class="storages.backends.s3boto3.S3Boto3Storage",
             kwargs=yaml.dump(kwargs))
         sai.users.add(self.user)
 
+        storage = sai.get_storage()
+        print(storage.listdir('.'))
+
     def tearDown(self):
+        self.__thread.terminate()
         self.stop_server()
         super(TestDjango_sftpserver_sftpserver_command_s3storage, self).tearDown()
-        self.__mock.stop()
 
     def test_listdir(self):
         # stat, open, remove, rename, mkdir, rmdir
